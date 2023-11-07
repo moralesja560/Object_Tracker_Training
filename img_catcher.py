@@ -85,9 +85,13 @@ class hilo1(threading.Thread):
 			except Exception as e:
 				#send_message(Jorge_Morales,quote(f"Falla de app: {e}. Si es el 1861, por favor conectarse al PLC via Twincat System Manager. Con eso se hace la conexión ADS"),token_Tel)
 				print(e)
-				plc.release_handle(var_handle46_1)
-				plc.close()
-				break
+				try:
+					plc.release_handle(var_handle46_1)
+					plc.close()
+				except:
+					print("couldnt close")
+				finally:
+					break
 			else:
 				if cell1:
 					
@@ -181,6 +185,7 @@ if __name__ == '__main__':
 		print(ams_net_id)
 		pyads.close_port()
 		plc=pyads.Connection('10.65.96.185.1.1', 801, '10.65.96.185')
+		plc.set_timeout(1000)
 	except:
 		print("No se pudo abrir la conexión")
 		sys.exit()
