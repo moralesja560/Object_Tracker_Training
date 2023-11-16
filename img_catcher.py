@@ -109,7 +109,7 @@ class hilo1(threading.Thread):
 						print(test)
 					cap.release()
 					"""
-					time.sleep(25.5)
+					time.sleep(25.4)
 					cap = cv2.VideoCapture(RTSP_URL, cv2.CAP_FFMPEG)
 					_, frame = cap.read()
 					y=0
@@ -122,7 +122,7 @@ class hilo1(threading.Thread):
 						pass
 					else:
 						et = time.time()
-						ts = str(et - st)
+						ts = str(et - st-1)
 						print(resource_path(f'resources/img{ts}.jpg'))
 						cv2.imwrite(resource_path(f'resources/img{ts}.jpg'), crop)
 

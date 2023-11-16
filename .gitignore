@@ -21,6 +21,7 @@ parts/
 sdist/
 var/
 classes/
+dataset
 resources/
 wheels/
 scripts/
