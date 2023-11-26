@@ -1,27 +1,28 @@
 # first, import all necessary modules
 from pathlib import Path
 
-#import blobconverter
+import blobconverter
 import cv2
-import depthai as dai
+import depthai
 import numpy as np
 
 # Pipeline tells DepthAI what operations to perform when running - you define all of the resources used and flows here
-pipeline = dai.Pipeline()
+pipeline = depthai.Pipeline()
 
 # First, we want the Color camera as the output
 cam_rgb = pipeline.createColorCamera()
-cam_rgb.setPreviewSize(256,256)  # 300x300 will be the preview frame size, available as 'preview' output of the node
+cam_rgb.setPreviewSize(300, 300)  # 300x300 will be the preview frame size, available as 'preview' output of the node
 cam_rgb.setInterleaved(False)
 
 # Next, we want a neural network that will produce the detections
-detection_nn = pipeline.createNeuralNetwork()
+detection_nn = pipeline.createMobileNetDetectionNetwork()
 # Blob is the Neural Network file, compiled for MyriadX. It contains both the definition and weights of the model
 # We're using a blobconverter tool to retreive the MobileNetSSD blob automatically from OpenVINO Model Zoo
-#detection_nn.setBlobPath(blobconverter.from_zoo(name='mobilenet-ssd', shaves=6))
-detection_nn.setBlobPath(r'C:\Users\moralesjo\OneDrive - Mubea\Documents\Python_S\Object_Tracker_Training\blobs\pizza (1).blob')
+detection_nn.setBlobPath(blobconverter.from_zoo(name='mobilenet-ssd', shaves=6))
 # Next, we filter out the detections that are below a confidence threshold. Confidence can be anywhere between <0..1>
-#detection_nn.setConfidenceThreshold(0.1)
+detection_nn.setConfidenceThreshold(0.9)
+
+
 # Next, we link the camera 'preview' output to the neural network detection input, so that it can produce detections
 cam_rgb.preview.link(detection_nn.input)
 
@@ -39,7 +40,7 @@ detection_nn.out.link(xout_nn.input)
 
 # Pipeline is now finished, and we need to find an available device to run our pipeline
 # we are using context manager here that will dispose the device after we stop using it
-with dai.Device(pipeline) as device:
+with depthai.Device(pipeline) as device:
     # From this point, the Device will be in "running" mode and will start sending data via XLink
 
     # To consume the device results, we get two output queues from the device, with stream names we assigned earlier
@@ -62,26 +63,22 @@ with dai.Device(pipeline) as device:
     while True:
         # we try to fetch the data from nn/rgb queues. tryGet will return either the data packet or None if there isn't any
         in_rgb = q_rgb.tryGet()
-        nnData = q_nn.get() # Blocking
+        in_nn = q_nn.tryGet()
 
         if in_rgb is not None:
             # If the packet from RGB camera is present, we're retrieving the frame in OpenCV format using getCvFrame
             frame = in_rgb.getCvFrame()
 
-        if nnData is not None:
+        if in_nn is not None:
             # when data from nn is received, we take the detections array that contains mobilenet-ssd results
-            detections = nnData.getLayerFp16("model/dense/BiasAdd")
-            print(detections)
+            detections = in_nn.detections
 
         if frame is not None:
             for detection in detections:
                 # for each bounding box, we first normalize it to match the frame size
-                #bbox = frameNorm(frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
+                bbox = frameNorm(frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
                 # and then draw a rectangle on the frame to show the actual result
-                #cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
-                #here we turn on the signal on the PLC
-                pass
-
+                cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
             # After all the drawing is finished, we show the frame on the screen
             cv2.imshow("preview", frame)
 

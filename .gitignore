@@ -22,6 +22,9 @@ sdist/
 var/
 classes/
 dataset
+yolov7-python
+YV7
+ready_blobs/
 resources/
 wheels/
 scripts/
