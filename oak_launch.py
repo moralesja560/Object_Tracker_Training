@@ -78,8 +78,7 @@ camRgb.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
 camRgb.setFps(40)
 
 # Network specific settings
-#detectionNetwork.setConfidenceThreshold(confidenceThreshold)
-detectionNetwork.setConfidenceThreshold(0.8)
+detectionNetwork.setConfidenceThreshold(confidenceThreshold)
 detectionNetwork.setNumClasses(classes)
 detectionNetwork.setCoordinateSize(coordinates)
 detectionNetwork.setAnchors(anchors)
