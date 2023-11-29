@@ -146,11 +146,11 @@ with depthai.Device(pipeline) as device:
 				cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (113,31,154), 1)
 				cv2.putText(frame, "spring", (bbox[0] + 10, bbox[1] - 25), cv2.FONT_HERSHEY_SIMPLEX , 0.5, (113,31,154))
 				cv2.putText(frame, f"{int(detection.confidence * 100)}%", (bbox[0] + 10 + 10, bbox[1] - 25 + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (113,31,154))
-				cv2.rectangle(frame, (box_coordinate1[0],box_coordinate1[1]), (box_coordinate2[0],box_coordinate2[1]), (113,31,154), 2)
+				cv2.rectangle(frame, (box_coordinate1[0],box_coordinate1[1]), (box_coordinate2[0],box_coordinate2[1]), (0,255,0), 2)
 				if (centroid[0] > box_coordinate1[0]) and (centroid[0]<box_coordinate2[0]) and (centroid[1] > box_coordinate1[1]) and (centroid[1]<box_coordinate2[1]) :
 					spring +=1
 				# After all the drawing is finished, we show the frame on the screen
-			cv2.putText(frame, f"Springs: {spring}",(2, frame.shape[0] - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (113,31,154))
+			cv2.putText(frame, f"Springs: {spring}",(2, frame.shape[0] - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0))
 			cv2.imshow("preview", frame)
 			spring = 0
 
