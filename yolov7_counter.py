@@ -110,6 +110,7 @@ def consumer(queue1):
 		# report
 		if item > 0:
 			print(f'>got {item}')
+			#Here will start 
 	# all done
 	print('Consumer: Done')
 
