@@ -176,7 +176,7 @@ def detect(queue1,save_img=False):
 	past_hour = 0
 	# Check the date and time.
 	now = datetime.now()
-	todai = int(now.strftime("%d"))
+	todai_i = int(now.strftime("%d"))
 	#hour
 	hour = int(now.strftime("%H"))
 	counter_n = 0
@@ -372,6 +372,13 @@ def detect(queue1,save_img=False):
 					#the counting var will not stop
 					past_hour = counting
 					hr_counting = 0
+				if todai_i != int(now.strftime("%d")):
+					modulo_counting = 0
+					array_ids.clear()
+					count_vehicle = 0
+					past_hour = 0
+					counting = 0
+
 					
 
 			#if counting % 10==0 and past_counting != counting:
