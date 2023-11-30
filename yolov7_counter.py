@@ -19,24 +19,59 @@ import skimage
 from sort import *
 from queue import Queue
 from threading import Thread
+from datetime import datetime
+from dotenv import load_dotenv
+from urllib.request import Request, urlopen
+import json
+from urllib.parse import quote
 
-#  python yolov7_counter.py --weights "C:\Users\moralesjo\OneDrive - Mubea\Documents\Python_S\YOLO7\yolov7\runs\train\tiny_yolov7\weights\best.pt" --source "rtsp://root:mubea@10.65.68.2:8554/axis-media/media.amp"
 #python test1sp_c.py --weights "C:\Users\moralesjo\OneDrive - Mubea\Documents\Python_S\YOLO7\yolov7\runs\train\tiny_yolov7\weights\best.pt" --source "rtsp://root:mubea@10.65.68.2:8554/axis-media/media.amp"
+# pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org python-dotenv -t
+
+#............................... Environment Variables ............................
+load_dotenv()
+token_Tel = os.getenv('TOK_EN_BOT')
+Jorge_Morales = os.getenv('JORGE_MORALES')
+Paintgroup = os.getenv('PAINTLINE')
 
 #............................... Tracker Functions ............................
 """ Random created palette"""
 palette = (2 ** 11 - 1, 2 ** 15 - 1, 2 ** 20 - 1)
 
-area1_pointA = (500,30)
-area1_pointB = (500,1150)
-area1_pointC = (600,30)
-area1_pointD = (600,1150)
+area1_pointA = (600,30)
+area1_pointB = (600,1150)
+area1_pointC = (700,30)
+area1_pointD = (700,1150)
 
 #vehicles total counting variables
 array_ids = []
 counting = 0
+hr_counting= 0
+past_hour = 0
 modulo_counting = 0
 
+"""" Sends the Hour per Hour Report. """
+def send_message(user_id, text,token):
+	global json_respuesta
+	url = f"https://api.telegram.org/{token}/sendMessage?chat_id={user_id}&text={text}"
+	#resp = requests.get(url)
+	#hacemos la petición
+	try:
+		#ruta_state = resource_path("images/tele.txt")
+		#file_exists = os.path.exists(ruta_state)
+		#if file_exists == False:
+		#	return
+		#else:
+		respuesta  = urlopen(Request(url))
+		#	pass
+	except Exception as e:
+		print(f"Ha ocurrido un error al enviar el mensaje: {e}")
+	else:
+		#recibimos la información
+		cuerpo_respuesta = respuesta.read()
+		# Procesamos la respuesta json
+		json_respuesta = json.loads(cuerpo_respuesta.decode("utf-8"))
+		print("mensaje enviado exitosamente")
 
 """" Calculates the relative bounding box from absolute pixel values. """
 def bbox_rel(*xyxy):
@@ -85,7 +120,7 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
 			midpoint_color = (0,0,255)
 			#print('Kategori : '+str(cat))
 			
-			#add vehicles counting
+			#add vehicle count
 			if len(array_ids) > 0:
 				if id not in array_ids:
 					array_ids.append(id)
@@ -93,13 +128,16 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
 				array_ids.append(id)
 			
 			
-		cv2.circle(img,center_point,radius=1,color=midpoint_color,thickness=2)
+		cv2.circle(img,center_point,radius=8,color=midpoint_color,thickness=5)
 		
 	return img
 #..............................................................................
 """Function to consume the results"""
 def consumer(queue1):
 	print('Consumer: Running')
+	now = datetime.now()
+	acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
+	todai = int(now.strftime("%d"))
 	# consume work
 	while True:
 		# get a unit of work
@@ -110,7 +148,20 @@ def consumer(queue1):
 		# report
 		if item > 0:
 			print(f'>got {item}')
-			#Here will start 
+			#The main loop only sends data when the hour has changed, so the thread will wait for the data input to report.
+			now = datetime.now()
+			hora_consumer = int(now.strftime("%H"))
+			acc_hr[int(hora_consumer)] = item
+			accumlated_consumer = sum(acc_hr.values())
+			send_message(Paintgroup,quote(f"Hola! Soy el nuevo reporte de hora {hora_consumer-1} - {hora_consumer}: \nHan pasado {item} piezas \nAcumulado día: {accumlated_consumer}"),token_Tel)
+			#however we take care of the day ourselves.
+			#I do not expect this thread to fail, so there is no recovery data. 
+		if todai != int(now.strftime("%d")):
+			acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
+			#se actualiza la hora
+			todai = int(now.strftime("%d"))
+
+			
 	# all done
 	print('Consumer: Done')
 
@@ -119,8 +170,16 @@ def detect(queue1,save_img=False):
 	save_img = not opt.nosave and not source.endswith('.txt')  # save inference images
 	webcam = source.isnumeric() or source.endswith('.txt') or source.lower().startswith(
 		('rtsp://', 'rtmp://', 'http://', 'https://'))
+	
 	#Initialize consumer watchdog
-	past_counting = 0
+	hr_counting= 0
+	past_hour = 0
+	# Check the date and time.
+	now = datetime.now()
+	todai = int(now.strftime("%d"))
+	#hour
+	hour = int(now.strftime("%H"))
+	counter_n = 0
 
 	#.... Initialize SORT .... 
 	#......................... 
@@ -277,24 +336,47 @@ def detect(queue1,save_img=False):
 			thickness = 2
 			fontScale = 1
 			font = cv2.FONT_HERSHEY_SIMPLEX
-			org = (160,570)
-			
+			org = (160,470)
+			org2 = (160,org[1]-50)
 			
 			if (count_vehicle == 0):
 				counting = len(array_ids)
+				#hr_counting  = len(array_ids)
 			else:
 				if (counting < 100):
 					counting = len(array_ids)
+					#hr_counting = len(array_ids)
 				else:
 					counting = modulo_counting + len(array_ids)
+					#hr_counting = modulo_counting + len(array_ids)
 					if(len(array_ids)%100 == 0):
 						modulo_counting = modulo_counting + 100
 						array_ids.clear()
-				
-			cv2.putText(im0, 'Spring Counting = '+str(counting), org, font, fontScale, color, thickness, cv2.LINE_AA)
-			if counting % 10==0 and past_counting != counting:
-				queue1.put(counting)
-				past_counting = counting
+
+			hr_counting = counting - past_hour
+			cv2.putText(im0, 'Today Acc Production: '+str(counting), org, font, fontScale, color, thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Hour {hour} Production: {str(hr_counting)}", org2, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			counter_n +=1
+			# if we check every 15th frame in a 30FPS framerate source, that means we're talking of 2 fps
+			# every 500 iterations, we pass a variable to the reporting thread.
+			if counter_n % 2000 ==0:
+				#check for actual timestamp
+				now = datetime.now()
+				times = now.strftime("%d-%m-%y %H:%M:%S")
+				print(f"sending report {times}")
+				#at the start of this loop, we stored the timestamp. Then we compare it against thte actual timestamp
+				if hour != int(now.strftime("%H")):
+					queue1.put(hr_counting)
+					hour = int(now.strftime("%H"))
+					counter_n = 0
+					#the counting var will not stop
+					past_hour = counting
+					hr_counting = 0
+					
+
+			#if counting % 10==0 and past_counting != counting:
+			#	queue1.put(counting)
+			#	past_counting = counting
 			
 			# Stream results
 			if view_img:
@@ -326,6 +408,7 @@ def detect(queue1,save_img=False):
 		#print(f"Results saved to {save_dir}{s}")
 
 	print(f'Done. ({time.time() - t0:.3f}s)')
+	queue1.put(None)
 
 
 if __name__ == '__main__':
@@ -333,8 +416,8 @@ if __name__ == '__main__':
 	parser.add_argument('--weights', nargs='+', type=str, default='yolov7.pt', help='model.pt path(s)')
 	parser.add_argument('--source', type=str, default='inference/images', help='source')  # file/folder, 0 for webcam
 	parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
-	parser.add_argument('--conf-thres', type=float, default=0.65, help='object confidence threshold')
-	parser.add_argument('--iou-thres', type=float, default=0.45, help='IOU threshold for NMS')
+	parser.add_argument('--conf-thres', type=float, default=0.8, help='object confidence threshold')
+	parser.add_argument('--iou-thres', type=float, default=0.7, help='IOU threshold for NMS')
 	parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
 	parser.add_argument('--view-img', action='store_true', help='display results')
 	parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
