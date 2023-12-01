@@ -26,7 +26,6 @@ dataset
 yolov7-python
 YV7
 ready_blobs/
-utils/
 sample_blob/
 resources/
 wheels/

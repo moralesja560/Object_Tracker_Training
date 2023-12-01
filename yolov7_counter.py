@@ -146,20 +146,21 @@ def consumer(queue1):
 		if item is None:
 			break
 		# report
-		if item > 0:
-			print(f'>got {item}')
-			#The main loop only sends data when the hour has changed, so the thread will wait for the data input to report.
-			now = datetime.now()
-			hora_consumer = int(now.strftime("%H"))
-			acc_hr[int(hora_consumer)] = item
-			accumlated_consumer = sum(acc_hr.values())
-			send_message(Paintgroup,quote(f"Hola! Soy el nuevo reporte de hora {hora_consumer-1} - {hora_consumer}: \nHan pasado {item} piezas \nAcumulado día: {accumlated_consumer}"),token_Tel)
-			#however we take care of the day ourselves.
-			#I do not expect this thread to fail, so there is no recovery data. 
+		#if item > 0:
+		print(f'received {item}')
+		#The main loop only sends data when the hour has changed, so the thread will wait for the data input to report.
+		now = datetime.now()
+		hora_consumer = int(now.strftime("%H"))
+		acc_hr[int(hora_consumer)] = item
+		accumlated_consumer = sum(acc_hr.values())
+		send_message(Paintgroup,quote(f"Hola! Soy una prueba de reporte de hora {hora_consumer-1} - {hora_consumer}: \nHan pasado {item:,} piezas \nAcumulado día: {accumlated_consumer:,} piezas"),token_Tel)
+		#I do not expect this thread to fail, so there is no recovery data. 
 		if todai != int(now.strftime("%d")):
 			acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
-			#se actualiza la hora
 			todai = int(now.strftime("%d"))
+		queue1.task_done()
+		print(f"queue processed. {queue1.qsize()}")
+
 
 			
 	# all done
@@ -176,10 +177,16 @@ def detect(queue1,save_img=False):
 	past_hour = 0
 	# Check the date and time.
 	now = datetime.now()
-	todai_i = int(now.strftime("%d"))
-	#hour
 	hour = int(now.strftime("%H"))
 	counter_n = 0
+	#springs per minute.
+	# we collect time, let's say 0 and the actual springs
+	spm_time_1=0
+	spm_1 = 0
+	# then we wait for the 2000 to pass and select the new time and the new amount of springs.
+	spm_time_2 = 0
+	spm_2 = 0
+	spm = 0
 
 	#.... Initialize SORT .... 
 	#......................... 
@@ -354,36 +361,41 @@ def detect(queue1,save_img=False):
 						array_ids.clear()
 
 			hr_counting = counting - past_hour
-			cv2.putText(im0, 'Today Acc Production: '+str(counting), org, font, fontScale, color, thickness, cv2.LINE_AA)
-			cv2.putText(im0, f"Hour {hour} Production: {str(hr_counting)}", org2, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			#cv2.putText(im0, 'Today Acc Production: '+str(counting), org, font, fontScale, color, thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Today Acc Production: {counting:,}", org, font, fontScale, color, thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Hour {hour} Production: {hr_counting:,}. Actual SPM {spm:.2f}", org2, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
 			counter_n +=1
 			# if we check every 15th frame in a 30FPS framerate source, that means we're talking of 2 fps
-			# every 500 iterations, we pass a variable to the reporting thread.
-			if counter_n % 2000 ==0:
+			# every 2000 iterations, we pass a variable to the reporting thread.
+			if counter_n % 1500 ==0:
 				#check for actual timestamp
 				now = datetime.now()
 				times = now.strftime("%d-%m-%y %H:%M:%S")
-				print(f"sending report {times}")
+				if spm_time_1 == 0:
+					spm_time_1 = time.time()
+					spm_1 = counting
+				else:
+					spm_time_2 = time.time()
+					spm_2 = counting
+					spm = (spm_2-spm_1)/int((spm_time_2-spm_time_1))*60
+					spm_time_1 = spm_time_2
+					spm_1 = spm_2
+
+				print(f"sending report {times}: hour is {hour} and actual hour is {int(now.strftime('%H'))}")
 				#at the start of this loop, we stored the timestamp. Then we compare it against thte actual timestamp
 				if hour != int(now.strftime("%H")):
-					queue1.put(hr_counting)
+					if hr_counting == 0:
+						queue1.put(hr_counting+1)
+						print(f"Queue sent: {queue1.qsize()}")
+					else:
+						queue1.put(hr_counting)
+						print(f"Queue sent: {queue1.qsize()}")
 					hour = int(now.strftime("%H"))
-					counter_n = 0
 					#the counting var will not stop
 					past_hour = counting
 					hr_counting = 0
-				if todai_i != int(now.strftime("%d")):
-					modulo_counting = 0
-					array_ids.clear()
-					count_vehicle = 0
-					past_hour = 0
-					counting = 0
+				counter_n = 0
 
-					
-
-			#if counting % 10==0 and past_counting != counting:
-			#	queue1.put(counting)
-			#	past_counting = counting
 			
 			# Stream results
 			if view_img:
