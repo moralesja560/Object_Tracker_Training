@@ -23,8 +23,7 @@ class CustomThread(Thread):
 			if (h % 20==0):
 				queue1.put(h)
 				print(f"put in queue{h}")
-				thread2 = CustomThread1(target=CustomThread1.run,args=(queue1,))
-				thread2.start()
+				
 				
 class CustomThread1(Thread):
     # override the run function
@@ -42,7 +41,8 @@ if __name__ == '__main__':
 	stride = 32
 	queue1 = queue.Queue()
 	thread = CustomThread(target=CustomThread.capture())
-	
+	thread2 = CustomThread1(target=CustomThread1.run,args=(queue1,))
 	thread.start()
+	thread2.start()
 	
 
