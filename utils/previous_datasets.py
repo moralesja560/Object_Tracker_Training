@@ -285,7 +285,7 @@ class LoadStreams:  # multiple IP or RTSP cameras
                 check_requirements(('pafy', 'youtube_dl'))
                 import pafy
                 url = pafy.new(url).getbest(preftype="mp4").url
-            cap = cv2.VideoCapture(url,apiPreference=cv2.CAP_ANY,params=[cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1000])
+            cap = cv2.VideoCapture(url)
             assert cap.isOpened(), f'Failed to open {s}'
             w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -308,21 +308,37 @@ class LoadStreams:  # multiple IP or RTSP cameras
     def update100(self, index, cap,url):
         #initialize the var that keep the frame count
         n=0
+        prev_size = 0
         #loop start
         while True:
+            #if the source is not opened, then break the loop.
+            #if not cap.isOpened():
+            #    print("broke because of cap not opened")
+            #    n=0
+            #    time.sleep(1)
+            #    cap = cv2.VideoCapture(url)
+            #    continue
             try:
-                exito = cap.grab()
-                #print("outside loop")
+                cap.grab()
                 n +=1
             except:
                 print("falló cap.grab")
                 time.sleep(2)
                 cap = self.cap_restart(url)
                 continue
-
+            #each 10th frame
             if n==5:
+                #jorge
                 #the lucky frame that is going to be processed, is stored in im
                 success, im = cap.retrieve()
+                if prev_size == 0:
+                    prev_size = np.sum(im)
+                else:
+                    if prev_size == np.sum(im):
+                        print("Picture freeze warning")
+                    #actions to prevent picture freezing
+                    # 
+                prev_size = np.sum(im)            
                 #print(f"forma {np.shape(im)} y suma: {np.sum(im)} y exito {success}")
                 if success:
                     self.imgs[index] = im
@@ -338,7 +354,7 @@ class LoadStreams:  # multiple IP or RTSP cameras
     def cap_restart(self,url):
         print("trying to recover cap")
         while True:
-            cap2 = cv2.VideoCapture(url,apiPreference=cv2.CAP_ANY,params=[cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1000])
+            cap2 = cv2.VideoCapture(url)
             try:
                 assert cap2.isOpened()
             except:

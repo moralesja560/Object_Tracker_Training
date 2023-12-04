@@ -13,7 +13,6 @@ class CustomThread(Thread):
 		dataset = LoadStreams(source, img_size=imgsz, stride=stride)
 		h=0
 		for path, img, im0s, vid_cap in dataset:
-			new_frame_time = time.time()
 			i=0
 			p, s, im0, frame = path[i], '%g: ' % i, im0s[i].copy(), dataset.count
 			p = Path(p)
@@ -21,8 +20,9 @@ class CustomThread(Thread):
 			cv2.waitKey(1)  # 1 millisecond
 			h+=1
 			if (h % 20==0):
-				queue1.put(h)
-				print(f"put in queue{h}")
+				#queue1.put(h)
+				#print(f"put in queue{h}, frames {frame}")
+				pass
 				
 				
 class CustomThread1(Thread):
@@ -41,8 +41,8 @@ if __name__ == '__main__':
 	stride = 32
 	queue1 = queue.Queue()
 	thread = CustomThread(target=CustomThread.capture())
-	thread2 = CustomThread1(target=CustomThread1.run,args=(queue1,))
+	#thread2 = CustomThread1(target=CustomThread1.run,args=(queue1,))
 	thread.start()
-	thread2.start()
+	#thread2.start()
 	
 
