@@ -198,12 +198,13 @@ def consumer(queue1):
 	# all done
 	print('Consumer: Done')
 
-def PLC_comms(queue2,plc):
+def PLC_comms(queue2,plc,queue3):
 	print('++++++++++++++++++++++++++++++++++ PLC: Running')
 	try:
 		plc.open()
 		plc.set_timeout(2000)
 		YOLO_counter = plc.get_handle('SCADA.YOLO_counter_UINT')
+		var_handle_empty_hr = plc.get_handle('SCADA.Empty_hooks_hr')
 	except Exception as e:
 			print(f"Starting error {e}")
 			time.sleep(10)
@@ -221,12 +222,14 @@ def PLC_comms(queue2,plc):
 		#it's time to work.
 		try:
 			plc.write_by_name("", int(item), plc_datatype=pyads.PLCTYPE_UINT,handle=YOLO_counter)
+			empty_spaces = plc.read_by_name("", plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_empty_hr)
 		except Exception as e:
 			print(f"Could not update in PLC: error {e}")
 			queue2.task_done()
 			plc, YOLO_counter = aux_PLC_comms()
 			continue
 		else:
+			queue3.put(empty_spaces)
 			print(f"PLC processed. {queue2.qsize()}")
 			queue2.task_done()
 			
@@ -267,7 +270,8 @@ def detect(queue1,save_img=False):
 	spm_time_2 = 0
 	spm_2 = 0
 	spm = 0
-
+	# Vars that come from the PLC.
+	Empty_hooks_hr = 0
 	#.... Initialize SORT .... 
 	#......................... 
 	sort_max_age = 5 
@@ -421,12 +425,12 @@ def detect(queue1,save_img=False):
 			cv2.line(im0,area1_pointC,area1_pointD,(0,255,0),2)
 
 			color = (255,0,0)
-			thickness = 2
-			fontScale = 1
+			thickness = 1
+			fontScale = 0.6
 			font = cv2.FONT_HERSHEY_SIMPLEX
-			org = (160,470)
-			org2 = (160,org[1]-50)
-			org3 = (160,org[1]+50)
+			org = (165,420)
+			org2 = (org[0],org[1]-35)
+			org3 = (org[0],org[1]-70)
 			
 			if (count_vehicle == 0):
 				springs_count = len(springs)
@@ -455,13 +459,14 @@ def detect(queue1,save_img=False):
 	#---------------Reporting section----------------------#
 
 			hr_springs_count = springs_count - past_hour
-			cv2.putText(im0, f"Today Acc Production: {springs_count:,}", org, font, fontScale, color, thickness, cv2.LINE_AA)
-			cv2.putText(im0, f"Hour {hour} Production: {hr_springs_count:,}. Actual SPM {spm:.2f}", org2, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Springs Today: {springs_count:,}", org, font, fontScale, color, thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Springs in Hour {hour}: {hr_springs_count:,}. Actual SPM {spm:.2f}", org2, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Empty Hangers in Hour {hour}: {Empty_hooks_hr} ", org3, font, fontScale, (10,74,200), thickness, cv2.LINE_AA)
 			#cv2.putText(im0, f"category 56 {hangers_count}", org3, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
 			counter_n +=1
 			# if we check every 15th frame in a 30FPS framerate source, that means we're talking of 2 fps
 			# every 2000 iterations, we pass a variable to the reporting thread.
-			if counter_n % 1500 ==0:
+			if counter_n % 1000 ==0:
 				#check for actual timestamp
 				now = datetime.now()
 				times = now.strftime("%d-%m-%y %H:%M:%S")
@@ -478,7 +483,13 @@ def detect(queue1,save_img=False):
 				print(f"sending report {times}: hour is {hour} and actual hour is {int(now.strftime('%H'))}")
 				if not opt.noPLC:
 					queue2.put(hr_springs_count+1)	
-					print(f"PLC Queue sent: {queue2.qsize()}")	
+					print(f"PLC Queue sent: {queue2.qsize()}")
+					try:
+						Empty_hooks_hr = queue3.get(block=False)
+						queue3.task_done()
+					except:
+						pass
+				
 				#at the start of this loop, we stored the timestamp. Then we compare it against thte actual timestamp
 				if hour != int(now.strftime("%H")):
 					queue1.put(hr_springs_count+1)
@@ -552,8 +563,12 @@ if __name__ == '__main__':
 	
 
 	#start consumer and PLC queues
+	#Q1 for Telegram Reporting. YOLO -> Consumer Thread
 	queue1 = Queue()
+	#Q2 is for PLC reporting  YOLO -> PLC 
 	queue2 = Queue()
+	#Q3 is for PLC reading PLC -> YOLO.
+	queue3 = Queue()
 	#Verify PLC connection to report.
 	if not opt.noPLC:
 		try:
@@ -563,7 +578,7 @@ if __name__ == '__main__':
 			pyads.close_port()
 			plc=pyads.Connection('10.65.96.185.1.1', 801, '10.65.96.185')
 			plc.set_timeout(2000)
-			PLC_thread = Thread(name="hilo_PLC",target=PLC_comms, args=(queue2,plc),daemon=True)
+			PLC_thread = Thread(name="hilo_PLC",target=PLC_comms, args=(queue2,plc,queue3),daemon=True)
 		except:
 			print("PLC couldn't be open. Try establishing it first using System Manager")
 			sys.exit()
@@ -574,10 +589,6 @@ if __name__ == '__main__':
 	#Start consumer thread
 	consumer = Thread(target=consumer, args=(queue1,),daemon=True)
 	consumer.start()
-
-
-
-
 
 	with torch.no_grad():
 		if opt.update:  # update all models (to fix SourceChangeWarning)
