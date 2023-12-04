@@ -43,13 +43,13 @@ area1_pointB = (600,1150)
 area1_pointC = (700,30)
 area1_pointD = (700,1150)
 
-#vehicles total counting variables
-array_ids = []
-array_ids2  = []
-counting = 0
-hr_counting= 0
+#vehicles total springs_count variables
+springs = []
+hangers  = []
+springs_count = 0
+hr_springs_count= 0
 past_hour = 0
-modulo_counting = 0
+modulo_springs_count = 0
 
 """" Sends the Hour per Hour Report. """
 def send_message(user_id, text,token):
@@ -117,30 +117,45 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
 		midpoint_y = y1+((y2-y1)/2)
 		center_point = (int(midpoint_x),int(midpoint_y))
 		midpoint_color = (0,255,0)
-
+		# Here we create the separate counters, one for categorie 0 and one counter for cat 56 (yolov7-tiny class number for a chair.)
+		# Find below the yolov7-tiny trained classes. 56 is for a chair.
+		"""
+		 class names
+			names: [ 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
+         'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow',
+         'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+         'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard',
+         'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+         'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+         'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
+         'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
+         'hair drier', 'toothbrush' ]
+		 """
+		# We do not mess with the unique ID system, we just separate the counter's storage. 
 		if cat ==0:		
+			
 			if (midpoint_x > area1_pointA[0] and midpoint_x < area1_pointD[0]) and (midpoint_y > area1_pointA[1] and midpoint_y < area1_pointD[1]):
 				
 				midpoint_color = (0,0,255)
 				#print('Kategori : '+str(cat))
 
 				#add vehicle count
-				if len(array_ids) > 0:
-					if id not in array_ids:
-						array_ids.append(id)
+				if len(springs) > 0:
+					if id not in springs:
+						springs.append(id)
 				else:
-					array_ids.append(id)
+					springs.append(id)
 		if cat ==56:
 			if (midpoint_x > area1_pointA[0] and midpoint_x < area1_pointD[0]) and (midpoint_y > area1_pointA[1] and midpoint_y < area1_pointD[1]):
 				
 				midpoint_color = (0,0,255)
 
 				#add vehicle count
-				if len(array_ids2) > 0:
-					if id not in array_ids2:
-						array_ids2.append(id)
+				if len(hangers) > 0:
+					if id not in hangers:
+						hangers.append(id)
 				else:
-					array_ids2.append(id)
+					hangers.append(id)
 			
 		cv2.circle(img,center_point,radius=8,color=midpoint_color,thickness=5)
 		
@@ -167,7 +182,7 @@ def consumer(queue1):
 		hora_consumer = int(now.strftime("%H"))
 		acc_hr[int(hora_consumer)] = item
 		accumlated_consumer = sum(acc_hr.values())
-		send_message(Paintgroup,quote(f"Hola! Soy una prueba de reporte de hora {hora_consumer-1} - {hora_consumer}: \nHan pasado {item:,} piezas \nAcumulado día: {accumlated_consumer:,} piezas"),token_Tel)
+		#send_message(Paintgroup,quote(f"Hola! Soy una prueba de reporte de hora {hora_consumer-1} - {hora_consumer}: \nHan pasado {item:,} piezas \nAcumulado día: {accumlated_consumer:,} piezas"),token_Tel)
 		#I do not expect this thread to fail, so there is no recovery data. 
 		if todai != int(now.strftime("%d")):
 			acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
@@ -187,7 +202,7 @@ def detect(queue1,save_img=False):
 		('rtsp://', 'rtmp://', 'http://', 'https://'))
 	
 	#Initialize consumer watchdog
-	hr_counting= 0
+	hr_springs_count= 0
 	past_hour = 0
 	# Check the date and time.
 	now = datetime.now()
@@ -363,37 +378,35 @@ def detect(queue1,save_img=False):
 			org3 = (160,org[1]+50)
 			
 			if (count_vehicle == 0):
-				counting = len(array_ids)
+				springs_count = len(springs)
 			else:
-				if (counting < 100):
-					counting = len(array_ids)
+				if (springs_count < 100):
+					springs_count = len(springs)
 				else:
-					counting = modulo_counting + len(array_ids)
-					#hr_counting = modulo_counting + len(array_ids)
-					if(len(array_ids)%100 == 0):
-						modulo_counting = modulo_counting + 100
-						array_ids.clear()
+					springs_count = modulo_springs_count + len(springs)
+					#hr_springs_count = modulo_springs_count + len(springs)
+					if(len(springs)%100 == 0):
+						modulo_springs_count = modulo_springs_count + 100
+						springs.clear()
 
-			# Other category counting
+			# Other category springs_count
 			if (count_vehicle2 == 0):
-				counting2 = len(array_ids2)
+				hangers_count = len(hangers)
 			else:
-				if (counting2 < 100):
-					counting2 = len(array_ids2)
+				if (hangers_count < 100):
+					hangers_count = len(hangers)
 				else:
-					counting2 = modulo_counting2 + len(array_ids2)
-					#hr_counting = modulo_counting + len(array_ids)
-					if(len(array_ids2)%100 == 0):
-						modulo_counting2 = modulo_counting2 + 100
-						array_ids2.clear()
+					hangers_count = modulo_hangers_count + len(hangers)
+					if(len(hangers)%100 == 0):
+						modulo_hangers_count = modulo_hangers_count + 100
+						hangers.clear()
 
 	#---------------Reporting section----------------------#
 
-			hr_counting = counting - past_hour
-			#cv2.putText(im0, 'Today Acc Production: '+str(counting), org, font, fontScale, color, thickness, cv2.LINE_AA)
-			cv2.putText(im0, f"Today Acc Production: {counting:,}", org, font, fontScale, color, thickness, cv2.LINE_AA)
-			cv2.putText(im0, f"Hour {hour} Production: {hr_counting:,}. Actual SPM {spm:.2f}", org2, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
-			cv2.putText(im0, f"category 56 {counting2}", org3, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			hr_springs_count = springs_count - past_hour
+			cv2.putText(im0, f"Today Acc Production: {springs_count:,}", org, font, fontScale, color, thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Hour {hour} Production: {hr_springs_count:,}. Actual SPM {spm:.2f}", org2, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			#cv2.putText(im0, f"category 56 {hangers_count}", org3, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
 			counter_n +=1
 			# if we check every 15th frame in a 30FPS framerate source, that means we're talking of 2 fps
 			# every 2000 iterations, we pass a variable to the reporting thread.
@@ -403,10 +416,11 @@ def detect(queue1,save_img=False):
 				times = now.strftime("%d-%m-%y %H:%M:%S")
 				if spm_time_1 == 0:
 					spm_time_1 = time.time()
-					spm_1 = counting
+					spm_1 = springs_count
+					spm = 0
 				else:
 					spm_time_2 = time.time()
-					spm_2 = counting
+					spm_2 = springs_count
 					spm = (spm_2-spm_1)/int((spm_time_2-spm_time_1))*60
 					spm_time_1 = spm_time_2
 					spm_1 = spm_2
@@ -414,21 +428,17 @@ def detect(queue1,save_img=False):
 				print(f"sending report {times}: hour is {hour} and actual hour is {int(now.strftime('%H'))}")
 				#at the start of this loop, we stored the timestamp. Then we compare it against thte actual timestamp
 				if hour != int(now.strftime("%H")):
-					if hr_counting == 0:
-						queue1.put(hr_counting+1)
+					if hr_springs_count == 0:
+						queue1.put(hr_springs_count+1)
 						print(f"Queue sent: {queue1.qsize()}")
 					else:
-						queue1.put(hr_counting)
+						queue1.put(hr_springs_count)
 						print(f"Queue sent: {queue1.qsize()}")
 					hour = int(now.strftime("%H"))
-					#the counting var will not stop
-					past_hour = counting
-					hr_counting = 0
+					#the springs_count var will not stop
+					past_hour = springs_count
+					hr_springs_count = 0
 				counter_n = 0
-
-
-
-
 			
 			
 			# Stream results
