@@ -27,6 +27,7 @@ from urllib.parse import quote
 import threading
 import pyads
 import sys
+import csv
 
 #python test1sp_c.py --weights "C:\Users\moralesjo\OneDrive - Mubea\Documents\Python_S\YOLO7\yolov7\runs\train\tiny_yolov7\weights\best.pt" --source "rtsp://root:mubea@10.65.68.2:8554/axis-media/media.amp"
 # pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org python-dotenv -t
@@ -53,6 +54,12 @@ springs_count = 0
 hr_springs_count= 0
 past_hour = 0
 modulo_springs_count = 0
+
+"References when pyinstaller"
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
 
 """" Sends the Hour per Hour Report. """
 def send_message(user_id, text,token):
@@ -185,7 +192,13 @@ def consumer(queue1):
 		hora_consumer = int(now.strftime("%H"))
 		acc_hr[int(hora_consumer)] = item
 		accumlated_consumer = sum(acc_hr.values())
-		#send_message(Paintgroup,quote(f"Hola! Soy una prueba de reporte de hora {hora_consumer-1} - {hora_consumer}: \nHan pasado {item:,} piezas \nAcumulado día: {accumlated_consumer:,} piezas"),token_Tel)
+		if hora_consumer == 0:
+			initial_hour = 23
+		else:
+			initial_hour = hora_consumer-1
+		gancheras = item // 20
+		send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {item:,} \nGancheras: {gancheras} \n Eff Hora: {(item/1580):.2%} \nHoy: {accumlated_consumer:,} piezas"),token_Tel)
+
 		#I do not expect this thread to fail, so there is no recovery data. 
 		if todai != int(now.strftime("%d")):
 			acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
@@ -246,9 +259,6 @@ def aux_PLC_comms():
 			return plc, YOLO_counter
 
 
-
-
-
 def detect(queue1,save_img=False):
 	source, weights, view_img, save_txt, imgsz, trace = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, not opt.no_trace
 	save_img = not opt.nosave and not source.endswith('.txt')  # save inference images
@@ -272,6 +282,7 @@ def detect(queue1,save_img=False):
 	spm = 0
 	# Vars that come from the PLC.
 	Empty_hooks_hr = 0
+
 	#.... Initialize SORT .... 
 	#......................... 
 	sort_max_age = 5 

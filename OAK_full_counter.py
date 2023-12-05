@@ -8,6 +8,7 @@ import depthai as dai
 import json
 # python 'c:\Users\moralesjo\OneDrive - Mubea\Documents\Python_S\YV_OAK\depthai_x\depthai-experiments\gen2-cumulative-object-counting\main2.py' -m "c:\Users\moralesjo\OneDrive - Mubea\Documents\Python_S\YV_OAK\depthai_x\depthai-experiments\gen2-yolo\device-decoding\tiny_y7\best_openvino_2022.1_6shave.blob" -c "C:\Users\moralesjo\OneDrive - Mubea\Documents\Python_S\YV_OAK\depthai_x\depthai-experiments\gen2-yolo\device-decoding\tiny_y7\best.json" -v "C:\Users\moralesjo\OneDrive - Mubea\Documents\Automation Projects\Official Video for Springs.mp4" -roi 0.4
 
+### ---------------------Section 1: Argument parsing--------------------------------------------#
 parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-m', '--model', type=str, help='File path of .blob file.')
@@ -103,7 +104,7 @@ nn.out.link(nnOut.input)
 objectTracker = pipeline.create(dai.node.ObjectTracker)
 # objectTracker.setDetectionLabelsToTrack([0])  # track only person
 # possible tracking types: ZERO_TERM_COLOR_HISTOGRAM, ZERO_TERM_IMAGELESS, SHORT_TERM_IMAGELESS, SHORT_TERM_KCF
-objectTracker.setTrackerType(dai.TrackerType.ZERO_TERM_COLOR_HISTOGRAM)
+objectTracker.setTrackerType(dai.TrackerType.ZERO_TERM_IMAGELESS)
 # take the smallest ID when new object is tracked, possible options: SMALLEST_ID, UNIQUE_ID
 objectTracker.setTrackerIdAssignmentPolicy(dai.TrackerIdAssignmentPolicy.SMALLEST_ID)
 
