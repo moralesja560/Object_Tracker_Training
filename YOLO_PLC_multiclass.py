@@ -216,11 +216,11 @@ def PLC_comms(queue2,plc,queue3):
 	try:
 		plc.open()
 		plc.set_timeout(2000)
-		YOLO_counter = plc.get_handle('SCADA.YOLO_counter_UINT')
+		YOLO_counter = plc.get_handle('.YOLO_counter_UINT')
 		var_handle_empty_hr = plc.get_handle('SCADA.Empty_hooks_hr')
 	except Exception as e:
-			print(f"Starting error {e}")
-			time.sleep(10)
+			print(f"Starting error: {e}")
+			time.sleep(5)
 			plc, YOLO_counter = aux_PLC_comms()
 	while True:
 		# get a unit of work
@@ -251,11 +251,11 @@ def aux_PLC_comms():
 		try:
 			plc=pyads.Connection('10.65.96.185.1.1', 801, '10.65.96.185')
 			plc.open()
-			YOLO_counter = plc.get_handle('SCADA.YOLO_counter_UINT')
+			YOLO_counter = plc.get_handle('.YOLO_counter_UINT')
 		except:
 			print(f"Auxiliary PLC: Couldn't open")
 		else:
-			print("Success")
+			print("Success PLC")
 			return plc, YOLO_counter
 
 
@@ -343,6 +343,7 @@ def detect(queue1,save_img=False):
 
 	t0 = time.time()
 	for path, img, im0s, vid_cap in dataset:
+		
 		img = torch.from_numpy(img).to(device)
 		img = img.half() if half else img.float()  # uint8 to fp16/32
 		img /= 255.0  # 0 - 255 to 0.0 - 1.0
