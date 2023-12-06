@@ -47,6 +47,11 @@ area1_pointB = (600,1150)
 area1_pointC = (700,30)
 area1_pointD = (700,1150)
 
+area1_pointA1 = (300,1)
+area1_pointB1 = (300,100)
+area1_pointC1 = (400,1)
+area1_pointD1 = (400,100)
+
 #vehicles total springs_count variables
 springs = []
 hangers  = []
@@ -103,6 +108,9 @@ def compute_color_for_labels(label):
 
 """Function to Draw Bounding boxes"""
 def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(0, 0)):
+	# Initialize variable to store the hanger photo
+	id_store = 0
+	img_copy = img
 	for i, box in enumerate(bbox):
 		x1, y1, x2, y2 = [int(i) for i in box]
 		x1 += offset[0]
@@ -155,12 +163,23 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
 						springs.append(id)
 				else:
 					springs.append(id)
-		if cat ==56:
-			if (midpoint_x > area1_pointA[0] and midpoint_x < area1_pointD[0]) and (midpoint_y > area1_pointA[1] and midpoint_y < area1_pointD[1]):
-				
+		if cat ==1:
+			if (midpoint_x > area1_pointA1[0] and midpoint_x < area1_pointD1[0]) and (midpoint_y > area1_pointA1[1] and midpoint_y < area1_pointD1[1]):
+				#store image
+				if id_store ==0:
+					file_exists = os.path.exists(f"rdy_hook_dataset\photo_{cat}_{id}.jpg")	
+					if not file_exists:
+						cv2.imwrite(f"rdy_hook_dataset\photo_{cat}_{id}.jpg", img_copy)
+					id_store = id
+				if id_store != id:
+					file_exists = os.path.exists(f"rdy_hook_dataset\photo_{cat}_{id}.jpg")	
+					if not file_exists:
+						cv2.imwrite(f"rdy_hook_dataset\photo_{cat}_{id}.jpg", img_copy)
+					id_store = id
+
 				midpoint_color = (0,0,255)
 
-				#add vehicle count
+				#add hanger count
 				if len(hangers) > 0:
 					if id not in hangers:
 						hangers.append(id)
@@ -176,28 +195,32 @@ def consumer(queue1):
 	print('++++++++++++++++++++++++++++++++++Consumer: Running')
 	now = datetime.now()
 	acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
+	hang_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
+	
 	todai = int(now.strftime("%d"))
 	# consume work
 	while True:
 		# get a unit of work
-		item = queue1.get()
+		springs,hangers = queue1.get()
 		# check for stop
-		if item is None:
+		if springs is None:
 			break
-		# report
-		#if item > 0:
-		print(f'received {item}')
+		print(f'received {springs}/{hangers}')
 		#The main loop only sends data when the hour has changed, so the thread will wait for the data input to report.
 		now = datetime.now()
 		hora_consumer = int(now.strftime("%H"))
-		acc_hr[int(hora_consumer)] = item
-		accumlated_consumer = sum(acc_hr.values())
 		if hora_consumer == 0:
 			initial_hour = 23
 		else:
 			initial_hour = hora_consumer-1
-		gancheras = item // 20
-		send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {item:,} \nGancheras: {gancheras} \n Eff Hora: {(item/1580):.2%} \nHoy: {accumlated_consumer:,} piezas"),token_Tel)
+		#we store the springs in the appropiate hour slot.
+		acc_hr[int(initial_hour)] = springs
+		# we store the hangers in the appropiate hour slot.
+		hang_hr[int(initial_hour)] = hangers
+		# we sum the values
+		acc_springs = sum(acc_hr.values())
+		acc_hangers = sum(hang_hr.values())
+		send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {springs:,} \nGancheras: {hangers:,} \nHuecos: {79-int(springs/20):,} \nEficiencia Hora Pz: {(springs/1580):.2%} \nEficiencia Hora Gch: {(hangers/79):.2%} \nHoy: {acc_hangers:,}/{acc_springs:,} Gch/Pz"),token_Tel)
 
 		#I do not expect this thread to fail, so there is no recovery data. 
 		if todai != int(now.strftime("%d")):
@@ -211,7 +234,7 @@ def consumer(queue1):
 	# all done
 	print('Consumer: Done')
 
-def PLC_comms(queue2,plc,queue3):
+def PLC_comms(queue2,plc):
 	print('++++++++++++++++++++++++++++++++++ PLC: Running')
 	try:
 		plc.open()
@@ -224,9 +247,9 @@ def PLC_comms(queue2,plc,queue3):
 			plc, YOLO_counter = aux_PLC_comms()
 	while True:
 		# get a unit of work
-		item = queue2.get()
+		springs,hangers = queue2.get()
 		# check for stop
-		if item is None:
+		if springs is None:
 			#PLC release and break
 			plc.release_handle(YOLO_counter)
 			plc.close()
@@ -234,15 +257,14 @@ def PLC_comms(queue2,plc,queue3):
 			break
 		#it's time to work.
 		try:
-			plc.write_by_name("", int(item), plc_datatype=pyads.PLCTYPE_UINT,handle=YOLO_counter)
-			empty_spaces = plc.read_by_name("", plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_empty_hr)
+			plc.write_by_name("", int(springs), plc_datatype=pyads.PLCTYPE_UINT,handle=YOLO_counter)
+			plc.write_by_name("",int(hangers), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_empty_hr)
 		except Exception as e:
 			print(f"Could not update in PLC: error {e}")
 			queue2.task_done()
 			plc, YOLO_counter = aux_PLC_comms()
 			continue
 		else:
-			queue3.put(empty_spaces)
 			print(f"PLC processed. {queue2.qsize()}")
 			queue2.task_done()
 			
@@ -268,6 +290,7 @@ def detect(queue1,save_img=False):
 	#Initialize consumer watchdog
 	hr_springs_count= 0
 	past_hour = 0
+	past_hanger_hr = 0
 	# Check the date and time.
 	now = datetime.now()
 	hour = int(now.strftime("%H"))
@@ -432,17 +455,26 @@ def detect(queue1,save_img=False):
 				
 			# Print time (inference + NMS)
 			#print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
-
+			# Line drawing
 			cv2.line(im0,area1_pointA,area1_pointB,(0,255,0),2)
 			cv2.line(im0,area1_pointC,area1_pointD,(0,255,0),2)
+			cv2.line(im0,area1_pointA1,area1_pointB1,(233,242,58),2)
+			cv2.line(im0,area1_pointC1,area1_pointD1,(233,242,58),2)
 
 			color = (255,0,0)
 			thickness = 1
 			fontScale = 0.6
 			font = cv2.FONT_HERSHEY_SIMPLEX
-			org = (165,420)
-			org2 = (org[0],org[1]-35)
-			org3 = (org[0],org[1]-70)
+			#For left side
+			left_first_row = (200,350)
+			left_second_row = (left_first_row[0],left_first_row[1]+35)
+			left_third_row = (left_first_row[0],left_first_row[1]+70)
+			left_fourth_row = (left_first_row[0],left_first_row[1]+105)
+			#For right side
+			right_first_row = (left_first_row[0]+600,350)
+			right_second_row = (left_first_row[0]+600,left_first_row[1]+35)
+			right_third_row = (left_first_row[0]+600,left_first_row[1]+70)
+
 			
 			if (count_vehicle == 0):
 				springs_count = len(springs)
@@ -471,10 +503,20 @@ def detect(queue1,save_img=False):
 	#---------------Reporting section----------------------#
 
 			hr_springs_count = springs_count - past_hour
-			cv2.putText(im0, f"Springs Today: {springs_count:,}", org, font, fontScale, color, thickness, cv2.LINE_AA)
-			cv2.putText(im0, f"Springs in Hour {hour}: {hr_springs_count:,}. Actual SPM {spm:.2f}", org2, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
-			cv2.putText(im0, f"Empty Hangers in Hour {hour}: {Empty_hooks_hr} ", org3, font, fontScale, (10,74,200), thickness, cv2.LINE_AA)
-			#cv2.putText(im0, f"category 56 {hangers_count}", org3, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			hr_hangers_count = hangers_count - past_hanger_hr
+			#---------------Left Side: Hangers
+			# Total Hangers
+			cv2.putText(im0, f"Hangers Today: {hangers_count}", left_first_row, font, fontScale, (58,117,6), thickness, cv2.LINE_AA)
+			# This Hour
+			cv2.putText(im0, f"Hangers in Hour {hour}: {hr_hangers_count}", left_second_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			#------------Right Side: Springs
+			# Total Springs
+			cv2.putText(im0, f"Springs Today: {springs_count:,}", left_third_row, font, fontScale, color, thickness, cv2.LINE_AA)
+			# This Hour + Speed
+			cv2.putText(im0, f"Springs in Hour {hour}: {hr_springs_count:,}. Actual SPM {spm:.2f}", left_fourth_row, font, fontScale, (245,51,229), thickness, cv2.LINE_AA)
+			
+			#cv2.putText(im0, f"Empty Hangers in Hour {hour}: {Empty_hooks_hr} ", org3, font, fontScale, (10,74,200), thickness, cv2.LINE_AA)
+			
 			counter_n +=1
 			# if we check every 15th frame in a 30FPS framerate source, that means we're talking of 2 fps
 			# every 2000 iterations, we pass a variable to the reporting thread.
@@ -494,23 +536,21 @@ def detect(queue1,save_img=False):
 					spm_1 = spm_2
 				print(f"sending report {times}: hour is {hour} and actual hour is {int(now.strftime('%H'))}")
 				if not opt.noPLC:
-					queue2.put(hr_springs_count+1)	
+					queue2.put((hr_springs_count,hr_hangers_count))	
 					print(f"PLC Queue sent: {queue2.qsize()}")
-					try:
-						Empty_hooks_hr = queue3.get(block=False)
-						queue3.task_done()
-					except:
-						pass
+
 				
 				#at the start of this loop, we stored the timestamp. Then we compare it against thte actual timestamp
 				if hour != int(now.strftime("%H")):
-					queue1.put(hr_springs_count+1)
-					queue2.put(hr_springs_count+1)
+					#In queue we put 2 values, hour springs and hourly hangers
+					queue1.put((hr_springs_count,hr_hangers_count))
 					print(f"Consumer Queue sent: {queue1.qsize()}")					
 					hour = int(now.strftime("%H"))
 					#the springs_count var will not stop
 					past_hour = springs_count
+					past_hanger_hr = hangers_count
 					hr_springs_count = 0
+					hr_hangers_count = 0
 				counter_n = 0
 			
 			
@@ -554,8 +594,8 @@ if __name__ == '__main__':
 	parser.add_argument('--weights', nargs='+', type=str, default='yolov7.pt', help='model.pt path(s)')
 	parser.add_argument('--source', type=str, default='inference/images', help='source')  # file/folder, 0 for webcam
 	parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
-	parser.add_argument('--conf-thres', type=float, default=0.8, help='object confidence threshold')
-	parser.add_argument('--iou-thres', type=float, default=0.7, help='IOU threshold for NMS')
+	parser.add_argument('--conf-thres', type=float, default=0.75, help='object confidence threshold')
+	parser.add_argument('--iou-thres', type=float, default=0.75, help='IOU threshold for NMS')
 	parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
 	parser.add_argument('--view-img', action='store_true', help='display results')
 	parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
@@ -590,7 +630,7 @@ if __name__ == '__main__':
 			pyads.close_port()
 			plc=pyads.Connection('10.65.96.185.1.1', 801, '10.65.96.185')
 			plc.set_timeout(2000)
-			PLC_thread = Thread(name="hilo_PLC",target=PLC_comms, args=(queue2,plc,queue3),daemon=True)
+			PLC_thread = Thread(name="hilo_PLC",target=PLC_comms, args=(queue2,plc),daemon=True)
 		except:
 			print("PLC couldn't be open. Try establishing it first using System Manager")
 			sys.exit()
