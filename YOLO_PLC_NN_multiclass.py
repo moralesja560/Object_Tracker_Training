@@ -61,6 +61,7 @@ hr_springs_count= 0
 past_hour = 0
 modulo_springs_count = 0
 
+
 "References when pyinstaller"
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -191,16 +192,15 @@ def consumer(queue1):
 	now = datetime.now()
 	acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
 	hang_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
-	
 	todai = int(now.strftime("%d"))
 	# consume work
 	while True:
 		# get a unit of work
-		springs,hangers = queue1.get()
+		springs_hr,hangers_hr,CNS_full_h,CNS_empty_h,CNS_full_d,CNS_empty_d = queue1.get()
 		# check for stop
-		if springs is None:
+		if springs_hr is None:
 			break
-		print(f'received {springs}/{hangers}')
+		print(f'received {springs_hr}/{hangers_hr}')
 		#The main loop only sends data when the hour has changed, so the thread will wait for the data input to report.
 		now = datetime.now()
 		hora_consumer = int(now.strftime("%H"))
@@ -211,31 +211,27 @@ def consumer(queue1):
 		else:
 			initial_hour = hora_consumer-1
 		#we store the springs in the appropiate hour slot.
-		acc_hr[int(initial_hour)] = springs
+		acc_hr[int(initial_hour)] = int(springs_hr)
 		# we store the hangers in the appropiate hour slot.
-		hang_hr[int(initial_hour)] = hangers
-
+		hang_hr[int(initial_hour)] = int(hangers_hr)
 		#---------------Telegram Report Section---------------------#
 		# we sum the values
 		acc_springs = sum(acc_hr.values())
 		acc_hangers = sum(hang_hr.values())
-
-		# STEP 1: Hangers do
-		if hangers>79:
-			g_caidas = 0
-		else:
-			g_caidas = 79 -hangers
+		#---------------Telegram Report Section---------------------#
 	
 		#send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {springs:,} \nGancheras: {hangers:,} \nHuecos: {79-int(springs/20):,} \nEficiencia Hora Pz: {(springs/1580):.2%} \nEficiencia Hora Gch: {(hangers/79):.2%} \nHoy: {acc_hangers:,}/{acc_springs:,} Gch/Pz"),token_Tel)
-		#send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {springs:,} \nGch detectadas: {hangers} \nEsp Vacios {}
+		#send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {springs_hr:,} \nGch detectadas: {hangers} \nEsp Vacios {}
+		send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {springs_hr:,} \nGancheras detectadas: {hangers_hr:,} \nHuecos: {CNS_empty_h:,} \nEff Pintura: {(springs_hr/1580):.2%} \nEff Prod: {(hangers_hr/79):.2%}"),token_Tel)
+		send_message(Paintgroup,quote(f"Acumulado Hoy: \nTotal Piezas: {acc_springs:,} \nTotal Gancheras: {acc_hangers:,} \nTotal Huecos: {CNS_empty_d:,}"),token_Tel)
+	
 		#I do not expect this thread to fail, so there is no recovery data. 
+		queue1.task_done()
+		print(f"CONS processed. {queue1.qsize()}")
 		if todai != int(now.strftime("%d")):
 			acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
 			hang_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
 			todai = int(now.strftime("%d"))
-		queue1.task_done()
-		print(f"queue processed. {queue1.qsize()}")
-
 
 			
 	# all done
@@ -247,40 +243,66 @@ def PLC_comms(queue2,plc):
 		plc.open()
 		plc.set_timeout(2000)
 		YOLO_counter = plc.get_handle('.YOLO_counter_UINT')
+		var_handle_full_hr = plc.get_handle('SCADA.Full_hooks_hr')
+		var_handle_full_day = plc.get_handle('SCADA.Full_hooks_day')
 		var_handle_empty_hr = plc.get_handle('SCADA.Empty_hooks_hr')
+		var_handle_empty_day = plc.get_handle('SCADA.Empty_hooks_day')
 	except Exception as e:
 			print(f"Starting error: {e}")
 			time.sleep(5)
-			plc, YOLO_counter = aux_PLC_comms()
+			plc, YOLO_counter, var_handle_full_hr, var_handle_full_day,  var_handle_empty_hr, var_handle_empty_day= aux_PLC_comms()
 	while True:
 		# get a unit of work
-		springs,hangers = queue2.get()
+		PLC_springs,PLC_hangers,PLC_full_hr,PLC_empty_hr,PLC_full_d,PLC_empty_d = queue2.get()
 		
 		# check for stop
-		if springs is None:
+		if PLC_springs is None:
 			#PLC release and break
 			plc.release_handle(YOLO_counter)
+			plc.release_handle(var_handle_full_hr)
+			plc.release_handle(var_handle_full_day)
+			plc.release_handle(var_handle_empty_hr)
+			plc.release_handle(var_handle_empty_day)
 			plc.close()
 			break
 		#it's time to work.
 		try:
-			plc.write_by_name("", int(springs), plc_datatype=pyads.PLCTYPE_UINT,handle=YOLO_counter)
-			plc.write_by_name("",int(hangers), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_empty_hr)
+			plc.write_by_name("", int(PLC_springs), plc_datatype=pyads.PLCTYPE_UINT,handle=YOLO_counter)
+			#llenas por h
+			plc.write_by_name("", int(PLC_full_hr), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_full_hr)
+			#llenas por d
+			plc.write_by_name("", int(PLC_full_d), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_full_day)
+			#vacias por h
+			plc.write_by_name("", int(PLC_empty_hr), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_empty_hr)
+			#vacias por d
+			plc.write_by_name("", int(PLC_empty_d), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_empty_day)	
+
 		except Exception as e:
 			print(f"Could not update in PLC: error {e}")
 			queue2.task_done()
-			plc, YOLO_counter = aux_PLC_comms()
+			plc, YOLO_counter, var_handle_full_hr, var_handle_full_day, var_handle_empty_hr, var_handle_empty_day= aux_PLC_comms()
 			continue
 		else:
 			print(f"PLC processed. {queue2.qsize()}")
 			queue2.task_done()
 			
 def aux_PLC_comms():
+
 	while True:
 		try:
 			plc=pyads.Connection('10.65.96.185.1.1', 801, '10.65.96.185')
+			plc.release_handle(YOLO_counter)
+			plc.release_handle(var_handle_full_hr)
+			plc.release_handle(var_handle_full_day)
+			plc.release_handle(var_handle_empty_hr)
+			plc.release_handle(var_handle_empty_day)
 			plc.open()
 			YOLO_counter = plc.get_handle('.YOLO_counter_UINT')
+			YOLO_counter = plc.get_handle('.YOLO_counter_UINT')
+			var_handle_full_hr = plc.get_handle('SCADA.Full_hooks_hr')
+			var_handle_full_day = plc.get_handle('SCADA.Full_hooks_day')
+			var_handle_empty_hr = plc.get_handle('SCADA.Empty_hooks_hr')
+			var_handle_empty_day = plc.get_handle('SCADA.Empty_hooks_day')
 		except:
 			print(f"Auxiliary PLC: Couldn't open")
 		else:
@@ -289,8 +311,13 @@ def aux_PLC_comms():
 
 def NN_process(q,NNmodel,q4):
 	previous_address = ""
-	empty_h = 0
 	full_h = 0
+	empty_h = 0
+	full_d = 0
+	empty_d = 0
+	now = datetime.now()
+	NN_hour = int(now.strftime("%H"))
+	NN_day = int(now.strftime("%d"))
 	while True:
 		# We receive an unit of work
 		img_address = q.get()
@@ -315,14 +342,25 @@ def NN_process(q,NNmodel,q4):
 			cv2.imwrite(resource_path(f'NN_results/full/full-{times}.jpg'), img)
 			print(f"NN full image stored with {int(final_data)}")
 			full_h +=1
+			full_d +=1
 			#plc.write_by_name("", 1, plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_actual_hook)	
 		else:
 			cv2.imwrite(resource_path(f'NN_results/empty/empty-{times}.jpg'), img)
 			print(f"NN empty image stored with {int(final_data)}")
 			empty_h +=1
+			empty_d +=1
 			#plc.write_by_name("", 2, plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_actual_hook)
 		#we delete the original image
-		q4.put((full_h,empty_h))
+
+		q4.put((full_h,empty_h,full_d,empty_d))
+
+		if NN_hour != int(now.strftime("%H")):
+			full_h = 0
+			empty_h = 0
+		if NN_day != int(now.strftime("%d")):
+			full_d = 0
+			empty_d = 0
+
 		q.task_done()
 		print(f"NN processed: Input Q3: {q.qsize()} Output Q4: {q4.qsize()}")
 		queue4
@@ -354,10 +392,13 @@ def detect(queue1,save_img=False):
 	spm_2 = 0
 	spm = 0
 	# Vars that come from the PLC.
-	
 	# Vars that come from the NN
 	NN_full_h = 0
 	NN_empty_h = 0
+	NN_full_d = 0
+	NN_empty_d = 0
+
+
 
 	#.... Initialize SORT .... 
 	#......................... 
@@ -525,9 +566,9 @@ def detect(queue1,save_img=False):
 			left_fourth_row = (left_first_row[0],left_first_row[1]+105)
 			left_fifth_row = (left_first_row[0],left_first_row[1]+140)
 			#For right side
-			right_first_row = (left_first_row[0]+600,350)
-			right_second_row = (left_first_row[0]+600,left_first_row[1]+35)
-			right_third_row = (left_first_row[0]+600,left_first_row[1]+70)
+			right_first_row = (left_first_row[0]+400,300)
+			right_second_row = (left_first_row[0]+400,left_first_row[1]+35)
+			right_third_row = (left_first_row[0]+400,left_first_row[1]+70)
 
 			
 			if (count_vehicle == 0):
@@ -560,23 +601,25 @@ def detect(queue1,save_img=False):
 			hr_hangers_count = hangers_count - past_hanger_hr
 			#---------------Left Side: Hangers
 			# Total Hangers
-			cv2.putText(im0, f"Hangers Today: {hangers_count}", left_first_row, font, fontScale, (58,117,6), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Hangers Today: {hangers_count}", left_first_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
 			# This Hour
 			cv2.putText(im0, f"Hangers in Hour {hour}: {hr_hangers_count}", left_second_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
 			#Full/Empty Hangers
-			cv2.putText(im0, f"Hangers Full/Empty: {NN_full_h}/{NN_empty_h}", left_third_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Hangers Full/Empty Hour {hour}: {NN_full_h}/{NN_empty_h}", left_third_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			#Full/Empty Hangers
+			cv2.putText(im0, f"Hangers Full/Empty Today: {NN_full_d}/{NN_empty_d}", left_fourth_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)			
 			#------------Right Side: Springs
 			# Total Springs
-			cv2.putText(im0, f"Springs Today: {springs_count:,}", left_fourth_row, font, fontScale, color, thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Springs Today: {springs_count:,}", right_first_row, font, fontScale, (245,51,229), thickness, cv2.LINE_AA)
 			# This Hour + Speed
-			cv2.putText(im0, f"Springs in Hour {hour}: {hr_springs_count:,}. Actual SPM {spm:.2f}", left_fifth_row, font, fontScale, (245,51,229), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Springs in Hour {hour}: {hr_springs_count:,}. Actual SPM {spm:.2f}", right_second_row, font, fontScale, (245,51,229), thickness, cv2.LINE_AA)
 			
 			#cv2.putText(im0, f"Empty Hangers in Hour {hour}: {Empty_hooks_hr} ", org3, font, fontScale, (10,74,200), thickness, cv2.LINE_AA)
 			
 			counter_n +=1
 			# if we check every 15th frame in a 30FPS framerate source, that means we're talking of 2 fps
 			# every 2000 iterations, we pass a variable to the reporting thread.
-			if counter_n % 1000 ==0:
+			if counter_n % 100 ==0:
 				#check for actual timestamp
 				now = datetime.now()
 				times = now.strftime("%d-%m-%y %H:%M:%S")
@@ -592,20 +635,26 @@ def detect(queue1,save_img=False):
 					spm_1 = spm_2
 				print(f"YOLO: sending report {times}")
 				if not opt.noPLC:
-					queue2.put((hr_springs_count,hr_hangers_count))	
+					queue2.put((hr_springs_count,hr_hangers_count,NN_full_h,NN_empty_h,NN_full_d,NN_empty_d))	
 					print(f"YOLO: Queue sent: {queue2.qsize()}")
 
 				if not opt.noNN:
-					try:
-						NN_full_h,NN_empty_h = queue4.get(block=False)
-						queue4.task_done()
-					except:
-						pass
+					while True:
+						if queue4.qsize()>0:
+							try:
+								NN_full_h,NN_empty_h,NN_full_d,NN_empty_d = queue4.get(block=False)
+								print(f"YOLO: Received Q4: {queue4.qsize()}")
+								queue4.task_done()
+							except:
+								pass
+						else:
+							break
 				
 				#at the start of this loop, we stored the timestamp. Then we compare it against thte actual timestamp
 				if hour != int(now.strftime("%H")):
 					#In queue we put 2 values, hour springs and hourly hangers
-					queue1.put((hr_springs_count,hr_hangers_count))
+					#queue1.put((hr_springs_count,hr_hangers_count))
+					queue1.put((hr_springs_count,hr_hangers_count,NN_full_h,NN_empty_h,NN_full_d,NN_empty_d))
 					print(f"YOLO: Consumer Queue sent: {queue1.qsize()}")					
 					hour = int(now.strftime("%H"))
 					#the springs_count var will not stop
@@ -647,9 +696,9 @@ def detect(queue1,save_img=False):
 
 	#Finish Processing and closing threads by sending NONE to the queues.
 	print(f'Done. ({time.time() - t0:.3f}s)')
-	queue1.put((None,0))
+	queue1.put((None,hr_hangers_count,NN_full_h,NN_empty_h,NN_full_d,NN_empty_d))
 	if not opt.noPLC:
-		queue2.put((None,0))
+		queue2.put((None,hr_hangers_count,NN_full_h,NN_empty_h,NN_full_d,NN_empty_d))
 	if not opt.noNN:
 		queue3.put(None)
 
