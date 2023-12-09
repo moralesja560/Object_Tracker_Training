@@ -33,6 +33,17 @@ import tensorflow as tf
 #python test1sp_c.py --weights "C:\Users\moralesjo\OneDrive - Mubea\Documents\Python_S\YOLO7\yolov7\runs\train\tiny_yolov7\weights\best.pt" --source "rtsp://root:mubea@10.65.68.2:8554/axis-media/media.amp"
 # pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org python-dotenv -t
 
+"""
+Variable naming rules and programming conventions
+
+1.-CNS, PLC, NN and YLO are the preffixes. When a variable is named NN_springs_count, it means that it only lives in the NN function
+	1.1.- The only vars that won't be subject to this convention are the original counters from YOLO.
+2.- springs and hangers are the only allowed categories
+3.- hr and dai will be the suffixes that will signal they're hourly or daily vars.
+4.- ALL the function's internal vars are subject to be renamed to prevent overlapping.
+"""
+
+
 #............................... Environment Variables ............................
 load_dotenv()
 token_Tel = os.getenv('TOK_EN_BOT')
@@ -56,10 +67,6 @@ area1_pointD1 = (400,100)
 #vehicles total springs_count variables
 springs = []
 hangers  = []
-springs_count = 0
-hr_springs_count= 0
-past_hour = 0
-modulo_springs_count = 0
 
 
 "References when pyinstaller"
@@ -70,6 +77,9 @@ def resource_path(relative_path):
 
 """" Sends the Hour per Hour Report. """
 def send_message(user_id, text,token):
+	if opt.noTele:
+		print("CNS: Disable Consumer Messaging Service")
+		return
 	global json_respuesta
 	url = f"https://api.telegram.org/{token}/sendMessage?chat_id={user_id}&text={text}"
 	#resp = requests.get(url)
@@ -111,7 +121,6 @@ def compute_color_for_labels(label):
 """Function to Draw Bounding boxes"""
 def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(0, 0)):
 	# Initialize variable to store the hanger photo
-	id_store = 0
 	img_copy = img.copy()
 	for i, box in enumerate(bbox):
 		x1, y1, x2, y2 = [int(i) for i in box]
@@ -129,9 +138,9 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
 		data = (int((box[0]+box[2])/2),(int((box[1]+box[3])/2)))
 		label = str(id) + ":"+ names[cat]
 		(w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-		cv2.rectangle(img, (x1, y1), (x2, y2), (255,144,30), 1)
+		cv2.rectangle(img, (x1, y1), (x2, y2), (255,144,30), 2)
 		#cv2.rectangle(img, (x1, y1 - 20), (x1 + w, y1), (255,144,30), -1)
-		cv2.putText(img, label, (x1, y1 - 5),cv2.FONT_HERSHEY_SIMPLEX, 0.6, [255, 255, 255], 1)
+		cv2.putText(img, label, (x1, y1 + 10),cv2.FONT_HERSHEY_SIMPLEX, 0.6, [255, 255, 255], 2)
 
 		midpoint_x = x1+((x2-x1)/2)
 		midpoint_y = y1+((y2-y1)/2)
@@ -167,12 +176,13 @@ def draw_boxes(img, bbox, identities=None, categories=None, names=None, offset=(
 					springs.append(id)
 		if cat ==1:
 			if (midpoint_x > area1_pointA1[0] and midpoint_x < area1_pointD1[0]) and (midpoint_y > area1_pointA1[1] and midpoint_y < area1_pointD1[1]):
-				#store image
-				file_exists = os.path.exists(f"NN_results\photo_{cat}_{id}.jpg")
-				if not file_exists:
-					address = str(f"NN_results\photo_{cat}_{id}.jpg")
-					cv2.imwrite(f"NN_results\photo_{cat}_{id}.jpg", img_copy)
-					queue3.put(address)
+				if not opt.noNN:
+					#store image
+					file_exists = os.path.exists(f"NN_results\photo_{cat}_{id}.jpg")
+					if not file_exists:
+						address = str(f"NN_results\photo_{cat}_{id}.jpg")
+						cv2.imwrite(f"NN_results\photo_{cat}_{id}.jpg", img_copy)
+						queue3.put(address)
 
 				midpoint_color = (0,0,255)
 				#add hanger count
@@ -192,11 +202,11 @@ def consumer(queue1):
 	now = datetime.now()
 	acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
 	hang_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
-	todai = int(now.strftime("%d"))
+	NN_todai = int(now.strftime("%d"))
 	# consume work
 	while True:
 		# get a unit of work
-		springs_hr,hangers_hr,CNS_full_h,CNS_empty_h,CNS_full_d,CNS_empty_d = queue1.get()
+		springs_hr,hangers_hr,CNS_empty_h,CNS_empty_d = queue1.get()
 		# check for stop
 		if springs_hr is None:
 			break
@@ -220,18 +230,16 @@ def consumer(queue1):
 		acc_hangers = sum(hang_hr.values())
 		#---------------Telegram Report Section---------------------#
 	
-		#send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {springs:,} \nGancheras: {hangers:,} \nHuecos: {79-int(springs/20):,} \nEficiencia Hora Pz: {(springs/1580):.2%} \nEficiencia Hora Gch: {(hangers/79):.2%} \nHoy: {acc_hangers:,}/{acc_springs:,} Gch/Pz"),token_Tel)
-		#send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {springs_hr:,} \nGch detectadas: {hangers} \nEsp Vacios {}
 		send_message(Paintgroup,quote(f"Reporte de Hora {initial_hour} - {hora_consumer}: \nPiezas: {springs_hr:,} \nGancheras detectadas: {hangers_hr:,} \nHuecos: {CNS_empty_h:,} \nEff Pintura: {(hangers_hr/79):.2%} \nEff Prod: {springs_hr/(hangers_hr*20):.2%}"),token_Tel)
 		send_message(Paintgroup,quote(f"Acumulado Hoy: \nTotal Piezas: {acc_springs:,} \nTotal Gancheras: {acc_hangers:,} \nTotal Huecos: {CNS_empty_d:,}"),token_Tel)
 
 		#I do not expect this thread to fail, so there is no recovery data. 
 		queue1.task_done()
 		print(f"CONS processed. {queue1.qsize()}")
-		if todai != int(now.strftime("%d")):
+		if NN_todai != int(now.strftime("%d")):
 			acc_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
 			hang_hr = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 21: 0, 22: 0, 23: 0}
-			todai = int(now.strftime("%d"))
+			NN_todai = int(now.strftime("%d"))
 
 			
 	# all done
@@ -247,14 +255,15 @@ def PLC_comms(queue2,plc):
 		var_handle_full_day = plc.get_handle('SCADA.Full_hooks_day')
 		var_handle_empty_hr = plc.get_handle('SCADA.Empty_hooks_hr')
 		var_handle_empty_day = plc.get_handle('SCADA.Empty_hooks_day')
+		var_handle_actual_hook = plc.get_handle('SCADA.This_hook')
 	except Exception as e:
 			print(f"Starting error: {e}")
 			time.sleep(5)
-			plc, YOLO_counter, var_handle_full_hr, var_handle_full_day,  var_handle_empty_hr, var_handle_empty_day= aux_PLC_comms()
+			plc, YOLO_counter, var_handle_full_hr, var_handle_full_day, var_handle_empty_hr, var_handle_empty_day,var_handle_actual_hook= aux_PLC_comms()
 	while True:
 		# get a unit of work
-		PLC_springs,PLC_hangers,PLC_full_hr,PLC_empty_hr,PLC_full_d,PLC_empty_d = queue2.get()
-		
+		PLC_springs,PLC_full_hr,PLC_empty_hr,PLC_full_d,PLC_empty_d,PLC_this_hook = queue2.get()
+
 		# check for stop
 		if PLC_springs is None:
 			#PLC release and break
@@ -275,12 +284,14 @@ def PLC_comms(queue2,plc):
 			#vacias por h
 			plc.write_by_name("", int(PLC_empty_hr), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_empty_hr)
 			#vacias por d
-			plc.write_by_name("", int(PLC_empty_d), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_empty_day)	
+			plc.write_by_name("", int(PLC_empty_d), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_empty_day)
+			#this hook
+			plc.write_by_name("", int(PLC_this_hook), plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_actual_hook)
 
 		except Exception as e:
 			print(f"Could not update in PLC: error {e}")
 			queue2.task_done()
-			plc, YOLO_counter, var_handle_full_hr, var_handle_full_day, var_handle_empty_hr, var_handle_empty_day= aux_PLC_comms()
+			plc, YOLO_counter, var_handle_full_hr, var_handle_full_day, var_handle_empty_hr, var_handle_empty_day,var_handle_actual_hook= aux_PLC_comms()
 			continue
 		else:
 			print(f"PLC processed. {queue2.qsize()}")
@@ -297,6 +308,7 @@ def aux_PLC_comms():
 			var_handle_full_day = plc.get_handle('SCADA.Full_hooks_day')
 			var_handle_empty_hr = plc.get_handle('SCADA.Empty_hooks_hr')
 			var_handle_empty_day = plc.get_handle('SCADA.Empty_hooks_day')
+			var_handle_actual_hook = plc.get_handle('SCADA.This_hook')
 		except:
 			print(f"Auxiliary PLC: Couldn't open")
 			time.sleep(4)
@@ -304,28 +316,36 @@ def aux_PLC_comms():
 		else:
 			plc.open()
 			print("Success PLC")
-			return plc, YOLO_counter, var_handle_full_hr, var_handle_full_day, var_handle_empty_hr, var_handle_empty_day
+			return plc, YOLO_counter, var_handle_full_hr, var_handle_full_day, var_handle_empty_hr, var_handle_empty_day, var_handle_actual_hook
 
 def NN_process(q,NNmodel,q4):
-	previous_address = ""
-	full_h = 0
-	empty_h = 0
-	full_d = 0
-	empty_d = 0
+	# Q is to receive the string where ill get the phot
+	# Q4 is to send the info to YOLO
+	#previous_address = ""
+	NN_full_hangers_hr = 0
+	NN_empty_hangers_hr = 0
+	NN_full_hangers_dai = 0
+	NN_empty_hangers_dai = 0
+	NN_actual_hook = 0
 	now = datetime.now()
-	NN_hour = int(now.strftime("%H"))
-	NN_day = int(now.strftime("%d"))
 	while True:
 		# We receive an unit of work
 		img_address = q.get()
+		
 		if img_address == None:
 			break
-		#if it's repeated, then clear the queue once the data comes.
-		if img_address == previous_address:
+		# IF we receive a code, then we reset the variable.
+		if img_address == "N400":
+			NN_full_hangers_hr =0
+			NN_empty_hangers_hr =0
+			print("NN: Reset H Vars")
 			q.task_done()
-			print(f"Repeated img, clearing queue3: {q.qsize()}")
-			previous_address = img_address
-			time.sleep(5)
+			continue
+		if img_address == "N600":
+			NN_full_hangers_dai =0
+			NN_empty_hangers_dai =0
+			print("NN: Reset D Vars")
+			q.task_done()
 			continue
 		img = cv2.imread(img_address)
 		image = cv2.resize(img,dsize=(224,224), interpolation = cv2.INTER_CUBIC) 
@@ -338,29 +358,23 @@ def NN_process(q,NNmodel,q4):
 		if final_data >0:
 			cv2.imwrite(resource_path(f'NN_results/full/full-{times}.jpg'), img)
 			print(f"NN full image stored with {int(final_data)}")
-			full_h +=1
-			full_d +=1
+			NN_full_hangers_hr +=1
+			NN_full_hangers_dai +=1
+			NN_actual_hook = 1
 			#plc.write_by_name("", 1, plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_actual_hook)	
 		else:
 			cv2.imwrite(resource_path(f'NN_results/empty/empty-{times}.jpg'), img)
 			print(f"NN empty image stored with {int(final_data)}")
-			empty_h +=1
-			empty_d +=1
+			NN_empty_hangers_hr +=1
+			NN_empty_hangers_dai +=1
+			NN_actual_hook = 2
 			#plc.write_by_name("", 2, plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_actual_hook)
 		#we delete the original image
 
-		q4.put((full_h,empty_h,full_d,empty_d))
-
-		if NN_hour != int(now.strftime("%H")):
-			full_h = 0
-			empty_h = 0
-		if NN_day != int(now.strftime("%d")):
-			full_d = 0
-			empty_d = 0
+		q4.put((NN_full_hangers_hr,NN_empty_hangers_hr,NN_full_hangers_dai,NN_empty_hangers_dai,NN_actual_hook))
 
 		q.task_done()
 		print(f"NN processed: Input Q3: {q.qsize()} Output Q4: {q4.qsize()}")
-		queue4
 		time.sleep(10)
 		os.remove(img_address)
 		
@@ -374,11 +388,14 @@ def detect(queue1,save_img=False):
 	
 	#Initialize consumer watchdog
 	hr_springs_count= 0
-	past_hour = 0
+	past_springs_hour = 0
 	past_hanger_hr = 0
+	modulo_hangers_count = 0
+	modulo_springs_count = 0
 	# Check the date and time.
 	now = datetime.now()
 	hour = int(now.strftime("%H"))
+	YLO_todai = int(now.strftime("%d"))
 	counter_n = 0
 	#springs per minute.
 	# we collect time, let's say 0 and the actual springs
@@ -390,11 +407,11 @@ def detect(queue1,save_img=False):
 	spm = 0
 	# Vars that come from the PLC.
 	# Vars that come from the NN
-	NN_full_h = 0
-	NN_empty_h = 0
-	NN_full_d = 0
-	NN_empty_d = 0
-
+	YLO_full_hangers_hr = 0
+	YLO_empty_hangers_hr = 0
+	YLO_full_hangers_dai = 0
+	YLO_empty_hangers_dai = 0
+	YLO_this_hook = 0
 
 
 	#.... Initialize SORT .... 
@@ -575,7 +592,6 @@ def detect(queue1,save_img=False):
 					springs_count = len(springs)
 				else:
 					springs_count = modulo_springs_count + len(springs)
-					#hr_springs_count = modulo_springs_count + len(springs)
 					if(len(springs)%100 == 0):
 						modulo_springs_count = modulo_springs_count + 100
 						springs.clear()
@@ -594,7 +610,7 @@ def detect(queue1,save_img=False):
 
 	#---------------Reporting section----------------------#
 
-			hr_springs_count = springs_count - past_hour
+			hr_springs_count = springs_count - past_springs_hour
 			hr_hangers_count = hangers_count - past_hanger_hr
 			#---------------Left Side: Hangers
 			# Total Hangers
@@ -602,9 +618,9 @@ def detect(queue1,save_img=False):
 			# This Hour
 			cv2.putText(im0, f"Hangers in Hour {hour}: {hr_hangers_count}", left_second_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
 			#Full/Empty Hangers
-			cv2.putText(im0, f"Hangers Full/Empty Hour {hour}: {NN_full_h}/{NN_empty_h}", left_third_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Hangers Full/Empty Hour {hour}: {YLO_full_hangers_hr}/{YLO_empty_hangers_hr}", left_third_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
 			#Full/Empty Hangers
-			cv2.putText(im0, f"Hangers Full/Empty Today: {NN_full_d}/{NN_empty_d}", left_fourth_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)			
+			cv2.putText(im0, f"Hangers Full/Empty Today: {YLO_full_hangers_dai}/{YLO_empty_hangers_dai}", left_fourth_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)			
 			#------------Right Side: Springs
 			# Total Springs
 			cv2.putText(im0, f"Springs Today: {springs_count:,}", right_first_row, font, fontScale, (245,51,229), thickness, cv2.LINE_AA)
@@ -616,7 +632,7 @@ def detect(queue1,save_img=False):
 			counter_n +=1
 			# if we check every 15th frame in a 30FPS framerate source, that means we're talking of 2 fps
 			# every 2000 iterations, we pass a variable to the reporting thread.
-			if counter_n % 100 ==0:
+			if counter_n % 500 ==0:
 				#check for actual timestamp
 				now = datetime.now()
 				times = now.strftime("%d-%m-%y %H:%M:%S")
@@ -630,37 +646,47 @@ def detect(queue1,save_img=False):
 					spm = (spm_2-spm_1)/int((spm_time_2-spm_time_1))*60
 					spm_time_1 = spm_time_2
 					spm_1 = spm_2
-				print(f"YOLO: sending report {times}")
-				if not opt.noPLC:
-					queue2.put((hr_springs_count,hr_hangers_count,NN_full_h,NN_empty_h,NN_full_d,NN_empty_d))	
-					print(f"YOLO: Queue sent: {queue2.qsize()}")
+				print(f"YOLO Update {times}")
 
 				if not opt.noNN:
 					while True:
 						if queue4.qsize()>0:
 							try:
-								NN_full_h,NN_empty_h,NN_full_d,NN_empty_d = queue4.get(block=False)
-								print(f"YOLO: Received Q4: {queue4.qsize()}")
+								YLO_full_hangers_hr,YLO_empty_hangers_hr,YLO_full_hangers_dai,YLO_empty_hangers_dai,YLO_this_hook = queue4.get(block=False)
+								print(f"NN > YOLO: {queue4.qsize()} remaining")
 								queue4.task_done()
 							except:
 								pass
 						else:
-							break
-				
+							break	
+
+				if not opt.noPLC:
+					queue2.put((hr_springs_count,YLO_full_hangers_hr,YLO_empty_hangers_hr,YLO_full_hangers_dai,YLO_empty_hangers_dai,YLO_this_hook))	
+					print(f"YOLO > PLC: {queue2.qsize()} remaining in queue")
+			
 				#at the start of this loop, we stored the timestamp. Then we compare it against thte actual timestamp
 				if hour != int(now.strftime("%H")):
-					#In queue we put 2 values, hour springs and hourly hangers
-					#queue1.put((hr_springs_count,hr_hangers_count))
-					queue1.put((hr_springs_count,hr_hangers_count,NN_full_h,NN_empty_h,NN_full_d,NN_empty_d))
+					#In queue1 we report the info to Telegram
+					queue1.put((hr_springs_count,hr_hangers_count,YLO_empty_hangers_hr,YLO_empty_hangers_dai))
 					print(f"YOLO: Consumer Queue sent: {queue1.qsize()}")					
 					hour = int(now.strftime("%H"))
-					#the springs_count var will not stop
-					past_hour = springs_count
+					
+					#Then we reset the vars to start the new hour
+					past_springs_hour = springs_count
 					past_hanger_hr = hangers_count
 					hr_springs_count = 0
 					hr_hangers_count = 0
+					if not opt.noNN:
+						queue3.put("N400")
+				if YLO_todai != int(now.strftime("%d")):
+					if not opt.noNN:
+						queue3.put("N600")
+				
 				counter_n = 0
-			
+
+
+
+		
 			
 			# Stream results
 			if view_img:
@@ -693,9 +719,9 @@ def detect(queue1,save_img=False):
 
 	#Finish Processing and closing threads by sending NONE to the queues.
 	print(f'Done. ({time.time() - t0:.3f}s)')
-	queue1.put((None,hr_hangers_count,NN_full_h,NN_empty_h,NN_full_d,NN_empty_d))
+	queue1.put((None,0,0,0))
 	if not opt.noPLC:
-		queue2.put((None,hr_hangers_count,NN_full_h,NN_empty_h,NN_full_d,NN_empty_d))
+		queue2.put((None,0,0,0,0,0))
 	if not opt.noNN:
 		queue3.put(None)
 
@@ -722,6 +748,7 @@ if __name__ == '__main__':
 	parser.add_argument('--no-trace', action='store_true', help='don`t trace model')
 	parser.add_argument('--noPLC', action='store_true', help='Use the counter with no PLC')
 	parser.add_argument('--noNN', action='store_true', help='Use the counter with no NN Output')
+	parser.add_argument('--noTele', action='store_true', help='Disable Telegram messaging')
 	opt = parser.parse_args()
 	#print(opt)
 
@@ -752,7 +779,7 @@ if __name__ == '__main__':
 	
 	if not opt.noNN:
 		print("Loading NN Model....")
-		new_model = tf.keras.models.load_model(resource_path(r"model_6_paintline"))
+		new_model = tf.keras.models.load_model(resource_path(r"model_7_paintline"))
 		print("Loaded NN Model")
 		NN_thread = Thread(name="hilo_NN",target=NN_process, args=(queue3,new_model,queue4),daemon=True)
 		NN_thread.start()
