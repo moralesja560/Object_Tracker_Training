@@ -625,15 +625,15 @@ def detect(queue1,save_img=False):
 			cv2.putText(im0, f"Hangers Full/Empty Today: {YLO_full_hangers_dai}/{YLO_empty_hangers_dai}", left_fourth_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)			
 			#------------Right Side: Springs
 			# Total Springs
-			cv2.putText(im0, f"Springs Today: {springs_count:,}", right_first_row, font, fontScale, (245,51,229), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Springs Today: {springs_count:,}", right_first_row, font, fontScale, (29,99,4), thickness, cv2.LINE_AA)
 			# This Hour + Speed
-			cv2.putText(im0, f"Springs in Hour {hour}: {hr_springs_count:,}. Actual SPM {spm:.2f}", right_second_row, font, fontScale, (245,51,229), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Springs in Hour {hour}: {hr_springs_count:,}. Actual SPM {spm:.2f}", right_second_row, font, fontScale, (29,99,4), thickness, cv2.LINE_AA)
 			
 			
 			counter_n +=1
 			# if we check every 15th frame in a 30FPS framerate source, that means we're talking of 2 fps
 			# every 2000 iterations, we pass a variable to the reporting thread.
-			if counter_n % 500 ==0:
+			if counter_n % 100 ==0:
 				#check for actual timestamp
 				now = datetime.now()
 				times = now.strftime("%d-%m-%y %H:%M:%S")
