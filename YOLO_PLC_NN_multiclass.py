@@ -1,3 +1,13 @@
+#------------------Author Info----------------------#
+#		   The AI Paintline Spring Counter
+# Designed and developed by: Ing Jorge Alberto Morales, MBA
+# Automation Project Sr Engineer for Mubea Coil Springs Mexico
+#			Jorge.Morales@mubea.com / 8445062027
+#---------------------------------------------------#
+
+
+
+
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 import argparse
@@ -69,11 +79,26 @@ springs = []
 hangers  = []
 
 
-"References when pyinstaller"
+"""References when pyinstaller"""
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
+
+""" References to MyDocuments"""
+def My_Documents(location):
+	import ctypes.wintypes
+		#####-----This section discovers My Documents default path --------
+		#### loop the "location" variable to find many paths, including AppData and ProgramFiles
+	CSIDL_PERSONAL = location       # My Documents
+	SHGFP_TYPE_CURRENT = 0   # Get current, not default value
+	buf= ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+	ctypes.windll.shell32.SHGetFolderPathW(None, CSIDL_PERSONAL, None, SHGFP_TYPE_CURRENT, buf)
+	#####-------- please use buf.value to store the data in a variable ------- #####
+	#add the text filename at the end of the path
+	temp_docs = buf.value
+	return temp_docs
+
 
 """" Sends the Hour per Hour Report. """
 def send_message(user_id, text,token):
@@ -358,29 +383,55 @@ def NN_process(q,NNmodel,q4):
 		#GUARDAMOS LA IMAGEN
 		# SI ES 1, ENTONCES LA gch ESTA LLENA
 		if final_data >0:
-			cv2.imwrite(resource_path(f'NN_results/full/full-{times}.jpg'), img)
+			#cv2.imwrite(resource_path(f'NN_results/full/full-{times}.jpg'), img)
+			NN_storage(img,1)
 			print(f"NN full image stored with {int(final_data)}")
 			NN_full_hangers_hr +=1
 			NN_full_hangers_dai +=1
 			NN_actual_hook = 1
-			#plc.write_by_name("", 1, plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_actual_hook)	
 		else:
-			cv2.imwrite(resource_path(f'NN_results/empty/empty-{times}.jpg'), img)
+			#cv2.imwrite(resource_path(f'NN_results/empty/empty-{times}.jpg'), img)
+			NN_storage(img,2)
 			print(f"NN empty image stored with {int(final_data)}")
 			NN_empty_hangers_hr +=1
 			NN_empty_hangers_dai +=1
 			NN_actual_hook = 2
-			#plc.write_by_name("", 2, plc_datatype=pyads.PLCTYPE_UINT,handle=var_handle_actual_hook)
 		#we delete the original image
-
 		q4.put((NN_full_hangers_hr,NN_empty_hangers_hr,NN_full_hangers_dai,NN_empty_hangers_dai,NN_actual_hook))
-
 		q.task_done()
 		print(f"NN processed: Input Q3: {q.qsize()} Output Q4: {q4.qsize()}")
 		time.sleep(10)
 		os.remove(img_address)
 		
-
+def NN_storage(img,command):
+	"""
+	This function is to store images in the correct folder to ensure trazability
+	The folder is in Mydocuments
+	Documents/Paintline_Evidence/<day>/<hour>/full
+	Documents/Paintline_Evidence/<day>/<hour>/empty
+	"""
+	# a new image has been received, check if folder exists
+	# Step 1: path first step
+	mis_docs = My_Documents(5)
+	now = datetime.now()
+	#date
+	NN_folder_name= "\\Paintline_Evidence\\" + now.strftime("%d-%m-%y--%H")
+	pd_ruta = str(mis_docs) + NN_folder_name
+	pd_ruta_full = pd_ruta + r'\\full'
+	pd_ruta_empty = pd_ruta + r'\\empty'
+	
+	if not os.path.isdir(pd_ruta):
+		os.makedirs(pd_ruta)
+		os.makedirs(pd_ruta_full)
+		os.makedirs(pd_ruta_empty)
+	
+	times = now.strftime("%d%m%y-%H%M%S")
+	if command == 1:
+		#full hanger
+		cv2.imwrite(pd_ruta_full+f"\{times}.jpg",img)
+	elif command == 2:
+		cv2.imwrite(pd_ruta_empty+f"\{times}.jpg",img)
+	return
 
 def detect(queue1,save_img=False):
 	source, weights, view_img, save_txt, imgsz, trace = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size, not opt.no_trace
@@ -392,6 +443,8 @@ def detect(queue1,save_img=False):
 	hr_springs_count= 0
 	past_springs_hour = 0
 	past_hanger_hr = 0
+	past_springs_dai = 0
+	past_hanger_dai = 0
 	modulo_hangers_count = 0
 	modulo_springs_count = 0
 	# Check the date and time.
@@ -611,12 +664,15 @@ def detect(queue1,save_img=False):
 						hangers.clear()
 
 	#---------------Reporting section----------------------#
-
+			#hourly reset
 			hr_springs_count = springs_count - past_springs_hour
 			hr_hangers_count = hangers_count - past_hanger_hr
+			#daily reset
+			dai_springs_count = springs_count - past_springs_dai
+			dai_hangers_count = hangers_count - past_hanger_dai
 			#---------------Left Side: Hangers
 			# Total Hangers
-			cv2.putText(im0, f"Hangers Today: {hangers_count}", left_first_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Hangers Today: {dai_hangers_count}", left_first_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
 			# This Hour
 			cv2.putText(im0, f"Hangers in Hour {hour}: {hr_hangers_count}", left_second_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)
 			#Full/Empty Hangers
@@ -625,7 +681,7 @@ def detect(queue1,save_img=False):
 			cv2.putText(im0, f"Hangers Full/Empty Today: {YLO_full_hangers_dai}/{YLO_empty_hangers_dai}", left_fourth_row, font, fontScale, (140,14,140), thickness, cv2.LINE_AA)			
 			#------------Right Side: Springs
 			# Total Springs
-			cv2.putText(im0, f"Springs Today: {springs_count:,}", right_first_row, font, fontScale, (29,99,4), thickness, cv2.LINE_AA)
+			cv2.putText(im0, f"Springs Today: {dai_springs_count:,}", right_first_row, font, fontScale, (29,99,4), thickness, cv2.LINE_AA)
 			# This Hour + Speed
 			cv2.putText(im0, f"Springs in Hour {hour}: {hr_springs_count:,}. Actual SPM {spm:.2f}", right_second_row, font, fontScale, (29,99,4), thickness, cv2.LINE_AA)
 			
@@ -633,7 +689,7 @@ def detect(queue1,save_img=False):
 			counter_n +=1
 			# if we check every 15th frame in a 30FPS framerate source, that means we're talking of 2 fps
 			# every 2000 iterations, we pass a variable to the reporting thread.
-			if counter_n % 100 ==0:
+			if counter_n % 150 ==0:
 				#check for actual timestamp
 				now = datetime.now()
 				times = now.strftime("%d-%m-%y %H:%M:%S")
@@ -650,19 +706,12 @@ def detect(queue1,save_img=False):
 				print(f"YOLO Update {times}")
 
 				if not opt.noNN:
-					#while True:
-					#	if queue4.qsize()>0:
-					#		try:
 					try:
 						YLO_full_hangers_hr,YLO_empty_hangers_hr,YLO_full_hangers_dai,YLO_empty_hangers_dai,YLO_this_hook = queue4.get(block=False)
 						print(f"NN > YOLO: {queue4.qsize()} remaining. Received this_hook with {YLO_this_hook}")
 						queue4.task_done()
 					except:
 						print("NN did not report this cycle")
-					#	else:
-					#		print("NN did not report this cycle")
-					#		YLO_this_hook = 0
-					#		break	
 
 				if not opt.noPLC:
 					queue2.put((hr_springs_count,YLO_full_hangers_hr,YLO_empty_hangers_hr,YLO_full_hangers_dai,YLO_empty_hangers_dai,YLO_this_hook))	
@@ -686,7 +735,11 @@ def detect(queue1,save_img=False):
 				if YLO_todai != int(now.strftime("%d")):
 					if not opt.noNN:
 						queue3.put("N600")
-				
+					past_springs_dai = springs_count
+					past_hanger_dai = hangers_count
+					dai_springs_count = 0
+					dai_hangers_count = 0
+					YLO_todai = int(now.strftime("%d"))		
 				counter_n = 0
 
 
